@@ -10,9 +10,10 @@ def main():
         connection, _ = server_socket.accept() # wait for client
         #print(f"accepted connection from {address}")
         
-        data = connection.recv(1024)
-        
-        for data in connection:
+        while True:
+            data = connection.recv(1024)
+            if data == b'':
+                break
             connection.sendall(b"+PONG\r\n")
 
 
