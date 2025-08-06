@@ -9,8 +9,11 @@ def main():
 
         connection, _ = server_socket.accept() # wait for client
         #print(f"accepted connection from {address}")
-
-        connection.sendall(b"+PONG\r\n")
+        
+        data = connection.recv(1024)
+        
+        for data in connection:
+            connection.sendall(b"+PONG\r\n")
 
 
 if __name__ == "__main__":
