@@ -55,6 +55,12 @@ async def handle_client(
         if parts[0].upper() == b"PING":
             writer.write(b"+PONG\r\n")
             await writer.drain()
+        elif parts[0].upper() == b"ECHO":
+            if len(parts) == 2:
+                data = parts[1]
+                length_bytes = str(len(parts[1])).encode() 
+                writer.write(b"$" + length_bytes + b"\r\n" + data + b"\r\n")
+                await writer.drain()
         else:
             continue
 
