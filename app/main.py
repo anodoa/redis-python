@@ -62,7 +62,7 @@ async def send_response(writer: asyncio.StreamWriter, data: bytes) -> None:
     await writer.drain()
 
 
-async def encode_bulk_string(data: bytes) -> bytes:
+def encode_bulk_string(data: bytes) -> bytes:
     """Encoding data into bulk string"""
 
     return b"$" + str(len(data)).encode() + b"\r\n" + data + b"\r\n"
@@ -93,7 +93,7 @@ async def execute_command(
     elif parts[0].upper() == CMD_GET and len(parts) == 2:
         key = parts[1]
         if key in db:
-            await send_response(writer, encode_bulk_string(db[key]))
+            await send_response(writer, await encode_bulk_string(db[key]))
         else:
             await send_response(writer, NBS)
     else:
