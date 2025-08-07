@@ -93,7 +93,7 @@ async def execute_command(
     elif parts[0].upper() == CMD_GET and len(parts) == 2:
         key = parts[1]
         if key in db:
-            await send_response(writer, await encode_bulk_string(db[key]))
+            await send_response(writer, encode_bulk_string(db[key]))
         else:
             await send_response(writer, NBS)
     else:
