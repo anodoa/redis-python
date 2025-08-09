@@ -70,7 +70,7 @@ async def execute_command(
     elif parts[0].upper() == CMD_ECHO and len(parts) == 2:
         await send_response(writer, encode_bulk_string(parts[1]))
     elif parts[0].upper() == CMD_SET and len(parts) >= 3:
-        if parts[3].upper() == ARG_PX and len(parts) > 4:
+        if len(parts) > 4 and parts[3].upper() == ARG_PX:
             expiry_sec = float(parts[4]) / 1000 # Parts[4] - expiry in ms 
             db[parts[1]] = (parts[2], time.monotonic() + expiry_sec)
         else:
