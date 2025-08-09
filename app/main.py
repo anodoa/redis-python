@@ -1,8 +1,9 @@
 """main.py - the main module of application which creates TCP-server, 
 allow to parse clients requests and execute their commands"""
 
-from typing import Optional
+from typing import Optional, Tuple
 import asyncio
+import time
 
 
 HOST = "localhost"
@@ -15,9 +16,10 @@ CMD_PING = b"PING"
 CMD_ECHO = b"ECHO"
 CMD_SET = b"SET"
 CMD_GET = b"GET"
+ARG_PX = b"PX"
 
 
-db: dict[bytes, bytes] = {}
+db: dict[bytes, Tuple[bytes, float | None]] = {}
 
 
 async def parser(reader: asyncio.StreamReader) -> Optional[list[bytes]]:
@@ -55,6 +57,40 @@ async def parser(reader: asyncio.StreamReader) -> Optional[list[bytes]]:
     return parts
 
 
+async def execute_command(
+    parts: list[bytes], writer: asyncio.StreamWriter
+) -> None:
+    """Function that executes clients commands"""
+
+    if not parts:
+        return
+
+    if parts[0].upper() == CMD_PING:
+        await send_response(writer, PONG)
+    elif parts[0].upper() == CMD_ECHO and len(parts) == 2:
+        await send_response(writer, encode_bulk_string(parts[1]))
+    elif parts[0].upper() == CMD_SET and len(parts) >= 3:
+        if parts[3].upper() == ARG_PX and len(parts) > 4:
+            expiry_sec = float(parts[4]) / 1000 # Parts[4] - expiry in ms 
+            db[parts[1]] = (parts[2], time.monotonic() + expiry_sec)
+        else:
+            db[parts[1]] = (parts[2], None)
+        await send_response(writer, OK)
+    elif parts[0].upper() == CMD_GET and len(parts) == 2:
+        key = parts[1]
+        if key in db:
+            value, expiry = db[key]
+            if expiry is None or expiry > time.monotonic():
+                await send_response(writer, encode_bulk_string(value))
+            else:
+                del db[key]
+                await send_response(writer, NBS)
+        else:
+            await send_response(writer, NBS)
+    else:
+        await send_error(writer, UNKNOWN_COMMAND_MESSAGE)
+
+
 async def send_response(writer: asyncio.StreamWriter, data: bytes) -> None:
     """Function that writes answer"""
 
@@ -73,31 +109,6 @@ async def send_error(writer: asyncio.StreamWriter, message: str) -> None:
 
     writer.write(f"-ERR {message}\r\n".encode())
     await writer.drain()
-
-
-async def execute_command(
-    parts: list[bytes], writer: asyncio.StreamWriter
-) -> None:
-    """Function that executes clients commands"""
-
-    if not parts:
-        return
-
-    if parts[0].upper() == CMD_PING:
-        await send_response(writer, PONG)
-    elif parts[0].upper() == CMD_ECHO and len(parts) == 2:
-        await send_response(writer, encode_bulk_string(parts[1]))
-    elif parts[0].upper() == CMD_SET and len(parts) == 3:
-        db[parts[1]] = parts[2]
-        await send_response(writer, OK)
-    elif parts[0].upper() == CMD_GET and len(parts) == 2:
-        key = parts[1]
-        if key in db:
-            await send_response(writer, encode_bulk_string(db[key]))
-        else:
-            await send_response(writer, NBS)
-    else:
-        await send_error(writer, UNKNOWN_COMMAND_MESSAGE)
 
 
 async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
@@ -120,5 +131,4 @@ async def start_server() -> None:
 
 
 if __name__ == "__main__":
-    loop = asyncio.new_event_loop()
-    loop.run_until_complete(start_server())
+    asyncio.run(start_server())
