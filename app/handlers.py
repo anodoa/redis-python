@@ -1,18 +1,18 @@
 """
-handlers.py — module with implementations of handlers for supported commands.
+handlers.py â€” module with implementations of handlers for supported commands.
 
 Each function takes in list of command arguments (list[bytes])
 and asyncio.StreamWriter object for sending response to client.
 
 Function:
-- handle_ping — responds with a PONG message to a command PING.
-- handle_echo — responds to the ECHO command by returning the passed string.
-- handle_set — saves key and value into database, supports PX flag.
-- handle_get — returns value based on the key or an empty response if there is no key.
+- handle_ping â€” responds with a PONG message to a command PING.
+- handle_echo â€” responds to the ECHO command by returning the passed string.
+- handle_set â€” saves key and value into database, supports PX flag.
+- handle_get â€” returns value based on the key or an empty response if there is no key.
 
 Constants:
-- PONG, OK, NBS — typical server responses.
-- UNKNOWN_COMMAND_MESSAGE — message about unknown command error.
+- PONG, OK, NBS â€” typical server responses.
+- UNKNOWN_COMMAND_MESSAGE â€” message about unknown command error.
 
 Used in execute_command() to call the appropriate handler,
 depending on the received command.
@@ -21,8 +21,8 @@ depending on the received command.
 
 import asyncio
 import time
-from db import db
-from protocol import send_response, send_error, encode_bulk_string
+from app.db import db
+from app.protocol import send_response, send_error, encode_bulk_string
 
 
 PONG = b"+PONG\r\n"

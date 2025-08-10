@@ -1,10 +1,10 @@
 """
-protocol.py — module that contains prtotocol constants, functions for bulk-string encoding, sending responses and errors.
+protocol.py - module that contains prtotocol constants, functions for bulk-string encoding, sending responses and errors.
 
 Functions:
-- encode_bulk_string(data: bytes) -> bytes — encoding data into bulk-string RESP2.
-- send_response(data: bytes, writer: asyncio.StreamWriter) — asynchronously sending response to client.
-- send_error(message: str, writer: asyncio.StreamWriter) — asynchronously sending error to client.
+- encode_bulk_string(data: bytes) -> bytes - encoding data into bulk-string RESP2.
+- send_response(data: bytes, writer: asyncio.StreamWriter) - asynchronously sending response to client.
+- send_error(message: str, writer: asyncio.StreamWriter) - asynchronously sending error to client.
 """
 
 

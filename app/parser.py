@@ -4,9 +4,9 @@ parser.py - module for parsing incoming commands by Redis protocol RESP2.
 Contains functions for reading bulk-strings and arrays of commands from stream asyncio.StreamReader.
 
 Functions:
-- read_bulk_string(reader: asyncio.StreamReader) -> bytes | None —
+- read_bulk_string(reader: asyncio.StreamReader) -> bytes | None â€”
   reads one bulk-string from incoming stream, returns its content or None if error.
-- parser(reader: asyncio.StreamReader) -> list[bytes] | None —
+- parser(reader: asyncio.StreamReader) -> list[bytes] | None â€”
   parses arguments array of command and returns list of bytes or None if data dont corresponds to RESP2 format.
 
 Used in main cycle of clients processing for transformation incoming data into list of arguments before executing a command.

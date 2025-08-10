@@ -1,13 +1,13 @@
 """
-main.py — the main module of the application.
+main.py - the main module of the application.
 
 Creates and starts a TCP server that accepts client connections
 and processes commands in the Redis RESP2 format.
 
 Functions:
-- handle_client — command processing cycle for one client.
-- execute_command — calling the appropriate handler by the command name.
-- start_server — initialization of the TCP server on the specified HOST:PORT.
+- handle_client - command processing cycle for one client.
+- execute_command - calling the appropriate handler by the command name.
+- start_server - initialization of the TCP server on the specified HOST:PORT
 
 Launch:
     python main.py
@@ -18,9 +18,9 @@ and returns responses in accordance with the implementation of commands in handl
 
 
 import asyncio
-from protocol import send_error
-from handlers import handlers, UNKNOWN_COMMAND_MESSAGE
-from parser import parser
+from app.protocol import send_error
+from app.handlers import handlers, UNKNOWN_COMMAND_MESSAGE
+from app.parser import parser
 
 
 HOST = "localhost"
