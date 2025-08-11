@@ -35,6 +35,7 @@ async def execute_command(parts: list[bytes], writer: asyncio.StreamWriter) -> N
 
     cmd = parts[0].upper()
     handler = handlers.get(cmd)
+    
     if handler:
         await handler(parts, writer)
     else:

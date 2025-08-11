@@ -3,6 +3,7 @@ protocol.py - module that contains prtotocol constants, functions for bulk-strin
 
 Functions:
 - encode_bulk_string(data: bytes) -> bytes - encoding data into bulk-string RESP2.
+- encode_integer(data: bytes) -> bytes - encoding data into integer RESP2.
 - send_response(data: bytes, writer: asyncio.StreamWriter) - asynchronously sending response to client.
 - send_error(message: str, writer: asyncio.StreamWriter) - asynchronously sending error to client.
 """
@@ -22,6 +23,12 @@ def encode_bulk_string(data: bytes) -> bytes:
     """Encoding data into bulk string"""
 
     return b"$" + str(len(data)).encode() + b"\r\n" + data + b"\r\n"
+
+
+def encode_integer(data: bytes) -> bytes:
+    """Encoding data into integer"""
+
+    return b":" + str(data).encode() + b"\r\n"
 
 
 async def send_error(message: str, writer: asyncio.StreamWriter) -> None:

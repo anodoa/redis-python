@@ -7,4 +7,4 @@ with support for key lifetime (TTL).
 from typing import Tuple
 
 
-db: dict[bytes, Tuple[bytes, float | None]] = {}
+db: dict[bytes, Tuple[bytes, any]] = {}
