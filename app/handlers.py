@@ -93,16 +93,19 @@ async def handle_rpush(parts: list[bytes], writer: asyncio.StreamWriter) -> None
         
         if not isinstance(value, list):
             await send_error(WRONG_VALUE_MESSAGE, writer)
+            return
         
-        if expiry is None or expiry > time.monotonic:
+        if expiry is None or expiry > time.monotonic():
             value.extend(parts[2:])
             db[key] = (value, expiry)
         else:
             del db[key]
             db[key] = (list(parts[2:]), None)
+    
     else:
         db[key] = (list(parts[2:]), None)
-    length_lst = len(db[key])
+    
+    length_lst = len(db[key][0])
     await send_response(encode_integer(length_lst), writer)
         
 
