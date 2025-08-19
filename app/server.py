@@ -64,7 +64,7 @@ class Redis_Server:
     async def start_server(self) -> None:
         """Function that creates server"""
 
-        server = await asyncio.start_server(self.handle_client, self.HOST, self.PORT)
+        server = await asyncio.start_server(self.handle_client, self.host, self.port)
         async with server:
             await server.serve_forever()
 
