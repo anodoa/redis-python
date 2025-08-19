@@ -12,13 +12,6 @@ Functions:
 import asyncio
 
 
-async def send_response(data: bytes, writer: asyncio.StreamWriter) -> None:
-    """Function that writes answer"""
-
-    writer.write(data)
-    await writer.drain()
-
-
 def encode_bulk_string(data: bytes) -> bytes:
     """Encoding data into bulk string"""
 
@@ -28,7 +21,23 @@ def encode_bulk_string(data: bytes) -> bytes:
 def encode_integer(data: bytes) -> bytes:
     """Encoding data into integer"""
 
-    return b":" + str(data).encode() + b"\r\n"
+    return f":{data}\r\n".encode()
+
+def encode_array(data: list[bytes]) -> bytes:
+    """Encoding list of bytes in RESP2-array"""
+
+    result = [f"*{len(data)}\r\n".encode()]
+    for element in data:
+        result.append(f"${len(element)}\r\n".encode())
+        result.append(element + b"\r\n")
+    return b"".join(result)
+
+
+async def send_response(data: bytes, writer: asyncio.StreamWriter) -> None:
+    """Writes answer to client"""
+
+    writer.write(data)
+    await writer.drain()
 
 
 async def send_error(message: str, writer: asyncio.StreamWriter) -> None:

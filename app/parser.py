@@ -18,7 +18,7 @@ import asyncio
 
 
 async def read_bulk_string(reader: asyncio.StreamReader) -> bytes | None:
-    """reads clients bulk string for parser()"""
+    """Reads clients bulk string for parser()"""
 
     try:
         len_line = await reader.readuntil(b"\r\n")
