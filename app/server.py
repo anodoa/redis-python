@@ -8,15 +8,15 @@ Contains:
 - method start_server - initialization of the TCP server on the specified HOST:PORT.
 
 Constants:
-- PONG, OK, NBS — typical server responses.
-- *_MESSAGE — messages about errors.
+- PONG, OK, NBS â€” typical server responses.
+- *_MESSAGE â€” messages about errors.
 
 Used in execute_command() to call the appropriate handler,
 depending on the received command:
-- method handle_ping — responds with a PONG message to a command PING.
-- method handle_echo — responds to the ECHO command by returning the passed string.
-- method handle_set — saves key and value into database, supports PX flag.
-- method handle_get — returns value based on the key or an empty response if there is no key.
+- method handle_ping â€” responds with a PONG message to a command PING.
+- method handle_echo â€” responds to the ECHO command by returning the passed string.
+- method handle_set â€” saves key and value into database, supports PX flag.
+- method handle_get â€” returns value based on the key or an empty response if there is no key.
 - method handle_rpush - saves key and list of values into database.
 - method handle_lrange - returns values of the array based on the key or an emtpy array if there is no key.
 
