@@ -192,7 +192,7 @@ class Redis_Server:
                     await send_response(encode_array([]), writer)
                 elif start <= end:
                     result = value[start:end+1]
-                    send_response(encode_array(result), writer)
+                    await send_response(encode_array(result), writer)
             else:
                 del self.db[key]
                 await send_response(encode_array([]), writer)
