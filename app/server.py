@@ -95,7 +95,7 @@ class Redis_Server:
             await send_error(UNKNOWN_COMMAND_MESSAGE, writer)
 
 
-    async def handle_ping(parts: list[bytes], writer: asyncio.StreamWriter) -> None:
+    async def handle_ping(self, parts: list[bytes], writer: asyncio.StreamWriter) -> None:
         """Handles ping command"""
 
         if len(parts) == 1:
@@ -104,7 +104,7 @@ class Redis_Server:
             await send_error(UNKNOWN_COMMAND_MESSAGE, writer)
 
 
-    async def handle_echo(parts: list[bytes], writer: asyncio.StreamWriter) -> None:
+    async def handle_echo(self, parts: list[bytes], writer: asyncio.StreamWriter) -> None:
         """Handles echo command"""
 
         if len(parts) == 2:
