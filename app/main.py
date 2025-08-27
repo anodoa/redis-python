@@ -6,16 +6,17 @@ Appointment:
 - The launch is performed by calling 'python main.py'
 
 Using:
-    $ python main.py
+    $ python -m app.main
 
 After startup, the server starts accepting commands from clients in the RESP2 format.
 """
 
 
 import asyncio
-from app.server import Redis_Server
+from app.server import RedisServer
 
 
 if __name__ == "__main__":
-    server = Redis_Server()
+    server = RedisServer()
     asyncio.run(server.start_server())
+    

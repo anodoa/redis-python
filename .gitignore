@@ -174,3 +174,5 @@ cython_debug/
 .pypirc
 /.vs
 /redis.gitignore
+
+test_client.py
