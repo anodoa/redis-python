@@ -121,10 +121,8 @@ class InMemoryDB(AbstractDatabase):
             expiry_time = time.monotonic() + expire if expire else None
             self.db[key] = (value, expiry_time)
 
-    async def delete(self, key: bytes):
-        lock = await self._get_lock(key)
-        async with lock:
-            self.db.pop(key, None)
+    def delete(self, key: bytes):
+        self.db.pop(key, None)
 
     async def get_(self, key: bytes):
         lock = await self._get_lock(key)
@@ -141,19 +139,19 @@ class InMemoryDB(AbstractDatabase):
     async def rpush(self, key: bytes, values: Deque[bytes]) -> int:
         lock = await self._get_lock(key)
         async with lock:
-            current = self.get_(key)
+            current = await self.get_(key)
             if current and not isinstance(current[0], deque):
                 raise ValueError(WRONG_VALUE_MESSAGE)
             new_deque = current[0] if current else deque([])
             new_deque.extend(values)
             expiry = current[1] if current else None
-            self.set_(key, new_deque, expire=max(expiry - time.monotonic(), 0) if expiry else None)
+            await self.set_(key, new_deque, expire=max(expiry - time.monotonic(), 0) if expiry else None)
             return len(new_deque)
 
     async def lrange(self, key: bytes, start: int, end: int) -> List[bytes]:
         lock = await self._get_lock(key)
         async with lock:
-            current = self.get_(key)
+            current = await self.get_(key)
             if not current:
                 return []
             value, _ = current
@@ -173,19 +171,19 @@ class InMemoryDB(AbstractDatabase):
     async def lpush(self, key: bytes, values: Deque[bytes]) -> int:
         lock = await self._get_lock(key)
         async with lock:
-            current = self.get_(key)
+            current = await self.get_(key)
             if current and not isinstance(current[0], deque):
                 raise ValueError(WRONG_VALUE_MESSAGE)
-            deque = current[0] if current else deque([])
-            deque.extendleft(reversed(values))
+            new_deque = current[0] if current else deque([])
+            new_deque.extendleft(reversed(values))
             expiry = current[1] if current else None
-            self.set_(key, deque, expire=max(expiry - time.monotonic(), 0) if expiry else None)
-            return len(deque)
+            await self.set_(key, new_deque, expire=max(expiry - time.monotonic(), 0) if expiry else None)
+            return len(new_deque)
 
     async def llen(self, key:bytes) -> int:
         lock = await self._get_lock(key)
         async with lock:
-            current = self.get_(key)
+            current = await self.get_(key)
             if not current:
                 return 0
             if not isinstance(current[0], deque):
@@ -195,7 +193,7 @@ class InMemoryDB(AbstractDatabase):
     async def lpop(self, key:bytes) -> Optional[bytes]:
         lock = await self._get_lock(key)
         async with lock:
-            current = self.get_(key)
+            current = await self.get_(key)
             if not current:
                 return None
             value, expiry = current
@@ -206,7 +204,7 @@ class InMemoryDB(AbstractDatabase):
 
             removed_el = value.popleft()
             if value:
-                self.set_(key, value, expire=max(expiry - time.monotonic(), 0) if expiry else None)
+                await self.set_(key, value, expire=max(expiry - time.monotonic(), 0) if expiry else None)
             else:
                 self.delete(key)
             return removed_el

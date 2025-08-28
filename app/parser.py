@@ -27,7 +27,7 @@ async def read_bulk_string(reader: asyncio.StreamReader) -> bytes | None:
         if not len_line.startswith(b"$"):
             return None
         
-        length = int(len_line[1:-2])
+        length = int(len_line[1:].strip())
         data = await reader.readexactly(length)
         await reader.readexactly(2) # reads \r\n after data
         
@@ -51,7 +51,7 @@ async def parser(reader: asyncio.StreamReader) -> Optional[Deque[bytes]]:
         return None
 
     n_arr = int(line[1:-2])
-    parts = []
+    parts = deque()
 
     for _ in range(n_arr):
         data = await read_bulk_string(reader)
@@ -60,4 +60,4 @@ async def parser(reader: asyncio.StreamReader) -> Optional[Deque[bytes]]:
         else:
             parts.append(data)
     
-    return deque(parts)
+    return parts
