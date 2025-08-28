@@ -114,25 +114,21 @@ class InMemoryDB(AbstractDatabase):
         value: Union[bytes, Deque[bytes]],
         expire: Optional[float] = None,
     ):
-        lock = await self._get_lock(key)
-        async with lock:
-            expiry_time = time.monotonic() + expire if expire else None
-            self.db[key] = (value, expiry_time)
+        expiry_time = time.monotonic() + expire if expire else None
+        self.db[key] = (value, expiry_time)
 
     def delete(self, key: bytes):
         self.db.pop(key, None)
 
     async def get_(self, key: bytes):
-        lock = await self._get_lock(key)
-        async with lock:
-            item = self.db.get(key)
-            if item is None:
-                return None
-            value, expiry = item
-            if expiry is None or expiry > time.monotonic():
-                return value, expiry
-            self.delete(key)
+        item = self.db.get(key)
+        if item is None:
             return None
+        value, expiry = item
+        if expiry is None or expiry > time.monotonic():
+            return value, expiry
+        self.delete(key)
+        return None
 
     async def rpush(self, key: bytes, values: Deque[bytes]) -> int:
         lock = await self._get_lock(key)
