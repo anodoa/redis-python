@@ -69,7 +69,7 @@ class AbstractDatabase(ABC):
     ) -> None: ...
 
     @abstractmethod
-    async def delete(self, key: bytes): ...
+    def delete(self, key: bytes): ...
 
     @abstractmethod
     async def get_(
@@ -116,15 +116,13 @@ class InMemoryDB(AbstractDatabase):
     ):
         lock = await self._get_lock(key)
         async with lock:
-            if isinstance(value, list):
+            if isinstance(value, deque):
                 value = deque(value)
             expiry_time = time.monotonic() + expire if expire else None
             self.db[key] = (value, expiry_time)
 
-    async def delete(self, key: bytes):
-        lock = await self._get_lock(key)
-        async with lock:
-            self.db.pop(key, None)
+    def delete(self, key: bytes):
+        self.db.pop(key, None)
 
     async def get_(self, key: bytes):
         lock = await self._get_lock(key)
@@ -135,7 +133,7 @@ class InMemoryDB(AbstractDatabase):
             value, expiry = item
             if expiry is None or expiry > time.monotonic():
                 return value, expiry
-            await self.delete(key)
+            self.delete(key)
             return None
 
     async def rpush(self, key: bytes, values: Deque[bytes]) -> int:
@@ -144,10 +142,13 @@ class InMemoryDB(AbstractDatabase):
             current = await self.get_(key)
             if current and not isinstance(current[0], deque):
                 raise ValueError(WRONG_VALUE_MESSAGE)
+            
             new_deque = current[0] if current else deque([])
             new_deque.extend(values)
+            
             expiry = current[1] if current else None
-            await self.set_(key, new_deque, expire=max(expiry - time.monotonic(), 0) if expiry else None)
+            remaining_expire = max(expiry - time.monotonic(), 0) if expiry else None
+            await self.set_(key, new_deque, expire=remaining_expire)
             return len(new_deque)
 
     async def lrange(self, key: bytes, start: int, end: int) -> List[bytes]:
@@ -176,10 +177,13 @@ class InMemoryDB(AbstractDatabase):
             current = await self.get_(key)
             if current and not isinstance(current[0], deque):
                 raise ValueError(WRONG_VALUE_MESSAGE)
+            
             new_deque = current[0] if current else deque([])
             new_deque.extendleft(reversed(values))
+            
             expiry = current[1] if current else None
-            await self.set_(key, new_deque, expire=max(expiry - time.monotonic(), 0) if expiry else None)
+            remaining_expire = max(expiry - time.monotonic(), 0) if expiry else None
+            await self.set_(key, new_deque, expire=remaining_expire)
             return len(new_deque)
 
     async def llen(self, key:bytes) -> int:
@@ -206,9 +210,10 @@ class InMemoryDB(AbstractDatabase):
 
             removed_el = value.popleft()
             if value:
-                await self.set_(key, value, expire=max(expiry - time.monotonic(), 0) if expiry else None)
+                remaining_expire = max(expiry - time.monotonic(), 0) if expiry else None
+                await self.set_(key, value, expire=remaining_expire)
             else:
-                await self.delete(key)
+                self.delete(key)
             return removed_el
 
 class RedisServer:
@@ -326,6 +331,9 @@ class RedisServer:
     ) -> None:
         """Handles rpush command"""
 
+        if len(parts) < 3:
+            await send_error(UNKNOWN_COMMAND_MESSAGE, writer)
+            return
         key = parts[1]
         try:
             values = deque(parts[i] for i in range(2, len(parts)))
@@ -333,8 +341,6 @@ class RedisServer:
             await send_response(encode_integer(length_lst), writer)
         except ValueError:
             await send_error(WRONG_VALUE_MESSAGE, writer)
-        except Exception as e:
-            await send_error(f"Internal server error: {e}", writer)
 
     async def handle_lrange(
         self, parts: Deque[bytes], writer: asyncio.StreamWriter
