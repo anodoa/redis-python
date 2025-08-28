@@ -99,10 +99,14 @@ class InMemoryDB(AbstractDatabase):
         self.global_lock = asyncio.Lock()
 
     async def _get_lock(self, key: bytes) -> asyncio.Lock:
+        """Returns Lock for key, creates if necessary"""
         async with self.global_lock:
             if key not in self.locks:
                 self.locks[key] = asyncio.Lock()
             return self.locks[key]
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(keys={len(self.db)})"
 
     async def set_(
         self,
@@ -143,6 +147,26 @@ class InMemoryDB(AbstractDatabase):
             await self.set_(key, new_deque, expire=max(expiry - time.monotonic(), 0) if expiry else None)
             return len(new_deque)
 
+    async def lrange(self, key: bytes, start: int, end: int) -> List[bytes]:
+        lock = await self._get_lock(key)
+        async with lock:
+            current = await self.get_(key)
+            if not current:
+                return []
+            value, _ = current
+            if not isinstance(value, deque):
+                raise ValueError(WRONG_VALUE_MESSAGE)
+            length = len(value)
+            if start < 0:
+                start += length
+                start = max(start, 0)
+            if end < 0:
+                end += length
+                end = min(end, length - 1)
+            if start > end:
+                return []
+            return list(islice(value, start, end + 1))
+
     async def lpush(self, key: bytes, values: Deque[bytes]) -> int:
         lock = await self._get_lock(key)
         async with lock:
@@ -155,6 +179,16 @@ class InMemoryDB(AbstractDatabase):
             expiry = current[1] if current else None
             await self.set_(key, new_deque, expire=max(expiry - time.monotonic(), 0) if expiry else None)
             return len(new_deque)
+
+    async def llen(self, key:bytes) -> int:
+        lock = await self._get_lock(key)
+        async with lock:
+            current = await self.get_(key)
+            if not current:
+                return 0
+            if not isinstance(current[0], deque):
+                raise ValueError(WRONG_VALUE_MESSAGE)
+            return len(current[0])
 
     async def lpop(self, key: bytes) -> Optional[bytes]:
         lock = await self._get_lock(key)
@@ -174,7 +208,6 @@ class InMemoryDB(AbstractDatabase):
             else:
                 self.delete(key)
             return removed_el
-
 
 class RedisServer:
 
