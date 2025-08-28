@@ -15,6 +15,8 @@ depending on the received command:
 - method handle_get — returns value based on the key or an empty response if there is no key.
 - method handle_rpush - saves key and list of values into database.
 - method handle_lrange - returns values of the array based on the key or an emtpy array if there is no key.
+- method handle_lpush - saves key and list of values into database like rpush, but in reversed order.
+- method handle_llen - used to query a list's length. It returns a RESP-encoded integer.
 
 Constants:
 - PONG, OK, NBS — typical server responses.
@@ -50,33 +52,37 @@ ARG_PX = b"PX"
 CMD_RPUSH = b"RPUSH"
 CMD_LRANGE = b"LRANGE"
 CMD_LPUSH = b"LPUSH"
+CMD_LLEN = b"LLEN"
 
 
 class AbstractDatabase(ABC):
     @abstractmethod
-    def set_(self, key: bytes, value: Union[bytes, List[bytes]], expire: Optional[float] = None) -> None:
-        ...
+    def set_(
+        self,
+        key: bytes,
+        value: Union[bytes, List[bytes]],
+        expire: Optional[float] = None,
+    ) -> None: ...
 
     @abstractmethod
-    def delete(self, key: bytes):
-        ...
+    def delete(self, key: bytes): ...
 
     @abstractmethod
-    def get_(self, key: bytes) -> Optional[Tuple[Union[bytes, List[bytes]], Optional[float]]]:
-        ...
-
-
-    @abstractmethod
-    def rpush(self, key: bytes, values: List[bytes]) -> int:
-        ...
+    def get_(
+        self, key: bytes
+    ) -> Optional[Tuple[Union[bytes, List[bytes]], Optional[float]]]: ...
 
     @abstractmethod
-    def lrange(self, key: bytes, start: int, end: int) -> List[bytes]:
-        ...
+    def rpush(self, key: bytes, values: List[bytes]) -> int: ...
 
     @abstractmethod
-    def lpush(self, key: bytes, values: List[bytes]) -> int:
-        ...
+    def lrange(self, key: bytes, start: int, end: int) -> List[bytes]: ...
+
+    @abstractmethod
+    def lpush(self, key: bytes, values: List[bytes]) -> int: ...
+
+    @abstractmethod
+    def llen(self, key: bytes) -> int: ...
 
 
 class InMemoryDB(AbstractDatabase):
@@ -86,7 +92,12 @@ class InMemoryDB(AbstractDatabase):
     def __repr__(self):
         return f"{self.__class__.__name__}(keys={len(self.db)})"
 
-    def set_(self, key: bytes, value: Union[bytes, List[bytes]], expire: Optional[float] = None):
+    def set_(
+        self,
+        key: bytes,
+        value: Union[bytes, List[bytes]],
+        expire: Optional[float] = None,
+    ):
         expiry_time = time.monotonic() + expire if expire else None
         self.db[key] = (value, expiry_time)
 
@@ -102,7 +113,6 @@ class InMemoryDB(AbstractDatabase):
             return value, expiry
         self.delete(key)
         return None
-
 
     def rpush(self, key: bytes, values: List[bytes]) -> int:
         current = self.get_(key)
@@ -130,7 +140,7 @@ class InMemoryDB(AbstractDatabase):
             end = min(end, length - 1)
         if start > end:
             return []
-        return value[start:end+1]
+        return value[start : end + 1]
 
     def lpush(self, key: bytes, values: List[bytes]) -> int:
         current = self.get_(key)
@@ -141,6 +151,14 @@ class InMemoryDB(AbstractDatabase):
         expiry = current[1] if current else None
         self.set_(key, new_list, expire=(expiry - time.monotonic()) if expiry else None)
         return len(new_list)
+
+    def llen(self, key:bytes) -> int:
+        current = self.get_(key)
+        if not current:
+            return 0
+        if not isinstance(current[0], list):
+            raise ValueError(WRONG_VALUE_MESSAGE)
+        return len(current[0])
 
 
 class RedisServer:
@@ -157,13 +175,15 @@ class RedisServer:
             CMD_RPUSH: self.handle_rpush,
             CMD_LRANGE: self.handle_lrange,
             CMD_LPUSH: self.handle_lpush,
+            CMD_LLEN: self.handle_llen,
         }
 
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(host = {self.host!r}, port = {self.port!r},"
             f"keys = {len(self.db.db) if isinstance(self.db, InMemoryDB) else '?'},"
-            f"handlers = {list(self.handlers.keys())})")
+            f"handlers = {list(self.handlers.keys())})"
+        )
 
     async def start_server(self) -> None:
         """Function that creates server"""
@@ -228,7 +248,7 @@ class RedisServer:
         key = parts[1]
         if len(parts) > 4 and parts[3].upper() == ARG_PX:
             expiry_sec = float(parts[4]) / 1000  # Parts[4] - expiry in ms
-            self.db.set_(key, parts[2], expire = expiry_sec)
+            self.db.set_(key, parts[2], expire=expiry_sec)
         else:
             self.db.set_(key, parts[2])
         await send_response(OK, writer)
@@ -255,7 +275,7 @@ class RedisServer:
             length_lst = self.db.rpush(key, parts[2:])
             await send_response(encode_integer(length_lst), writer)
         except ValueError:
-            await send_error(WRONG_VALUE_MESSAGE, writer) 
+            await send_error(WRONG_VALUE_MESSAGE, writer)
 
     async def handle_lrange(
         self, parts: list[bytes], writer: asyncio.StreamWriter
@@ -279,6 +299,16 @@ class RedisServer:
         key = parts[1]
         try:
             length_lst = self.db.lpush(key, parts[2:])
+            await send_response(encode_integer(length_lst), writer)
+        except ValueError:
+            await send_error(WRONG_VALUE_MESSAGE, writer)
+
+    async def handle_llen(self, parts: list[bytes], writer: asyncio.StreamWriter) -> None:
+        """Handles llen command"""
+
+        key = parts[1]
+        try:
+            length_lst = self.db.llen(key)
             await send_response(encode_integer(length_lst), writer)
         except ValueError:
             await send_error(WRONG_VALUE_MESSAGE, writer)
