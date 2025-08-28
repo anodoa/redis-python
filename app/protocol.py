@@ -11,7 +11,7 @@ Functions:
 
 import asyncio
 from collections import deque
-from typing import Deque
+from typing import Deque, Union, List
 
 
 def encode_bulk_string(data: bytes) -> bytes:
@@ -20,12 +20,12 @@ def encode_bulk_string(data: bytes) -> bytes:
     return b"$" + str(len(data)).encode() + b"\r\n" + data + b"\r\n"
 
 
-def encode_integer(data: bytes) -> bytes:
+def encode_integer(data: int) -> bytes:
     """Encoding data into integer"""
 
     return f":{data}\r\n".encode()
 
-def encode_array(data: Deque[bytes]) -> bytes:
+def encode_array(data: Union[List[bytes], Deque[bytes]]) -> bytes:
     """Encoding deque of bytes in RESP2-array"""
 
     result = [f"*{len(data)}\r\n".encode()]

@@ -95,15 +95,15 @@ class AbstractDatabase(ABC):
 class InMemoryDB(AbstractDatabase):
     def __init__(self):
         self.db: Dict[bytes, Tuple[Union[bytes, Deque[bytes]], Optional[float]]] = {}
-        self.locks: Dict[bytes, asyncio.Lock] = {}
-        self.global_lock = asyncio.Lock()
+        #self.locks: Dict[bytes, asyncio.Lock] = {}
+        #self.global_lock = asyncio.Lock()
 
-    async def _get_lock(self, key: bytes) -> asyncio.Lock:
-        """Returns Lock for key, creates if necessary"""
-        async with self.global_lock:
-            if key not in self.locks:
-                self.locks[key] = asyncio.Lock()
-            return self.locks[key]
+    #async def _get_lock(self, key: bytes) -> asyncio.Lock:
+    #    """Returns Lock for key, creates if necessary"""
+    #    async with self.global_lock:
+    #        if key not in self.locks:
+    #            self.locks[key] = asyncio.Lock()
+    #        return self.locks[key]
 
     def __repr__(self):
         return f"{self.__class__.__name__}(keys={len(self.db)})"
@@ -114,9 +114,9 @@ class InMemoryDB(AbstractDatabase):
         value: Union[bytes, Deque[bytes]],
         expire: Optional[float] = None,
     ):
-        lock = await self._get_lock(key)
-        async with lock:
-            if isinstance(value, list):
+        #lock = await self._get_lock(key)
+        #async with lock:
+            if isinstance(value, deque):
                 value = deque(value)
             expiry_time = time.monotonic() + expire if expire else None
             self.db[key] = (value, expiry_time)
@@ -125,8 +125,8 @@ class InMemoryDB(AbstractDatabase):
         self.db.pop(key, None)
 
     async def get_(self, key: bytes):
-        lock = await self._get_lock(key)
-        async with lock:
+        #lock = await self._get_lock(key)
+        #async with lock:
             item = self.db.get(key)
             if item is None:
                 return None
@@ -142,8 +142,10 @@ class InMemoryDB(AbstractDatabase):
             current = await self.get_(key)
             if current and not isinstance(current[0], deque):
                 raise ValueError(WRONG_VALUE_MESSAGE)
+            
             new_deque = current[0] if current else deque([])
             new_deque.extend(values)
+            
             expiry = current[1] if current else None
             await self.set_(key, new_deque, expire=max(expiry - time.monotonic(), 0) if expiry else None)
             return len(new_deque)
@@ -302,9 +304,9 @@ class RedisServer:
         key = parts[1]
         if len(parts) > 4 and parts[3].upper() == ARG_PX:
             expiry_sec = float(parts[4]) / 1000  # Parts[4] - expiry in ms
-            await self.db.set_(key, parts[2], expire=expiry_sec)
+            self.db.set_(key, parts[2], expire=expiry_sec)
         else:
-            await self.db.set_(key, parts[2])
+            self.db.set_(key, parts[2])
         await send_response(OK, writer)
 
     async def handle_get(
@@ -313,7 +315,7 @@ class RedisServer:
         """Handles get command"""
 
         key = parts[1]
-        result = await self.db.get_(key)
+        result = self.db.get_(key)
         if result:
             await send_response(encode_bulk_string(result[0]), writer)
         else:
@@ -324,10 +326,13 @@ class RedisServer:
     ) -> None:
         """Handles rpush command"""
 
+        if len(parts) < 3:
+            await send_error(UNKNOWN_COMMAND_MESSAGE, writer)
+            return
         key = parts[1]
         try:
             values = deque(parts[i] for i in range(2, len(parts)))
-            length_lst = await self.db.rpush(key, values)
+            length_lst = self.db.rpush(key, values)
             await send_response(encode_integer(length_lst), writer)
         except ValueError:
             await send_error(WRONG_VALUE_MESSAGE, writer)
@@ -341,7 +346,7 @@ class RedisServer:
         try:
             start = int(parts[2])
             end = int(parts[3])
-            result = await self.db.lrange(key, start, end)
+            result = self.db.lrange(key, start, end)
             await send_response(encode_array(result), writer)
         except ValueError as e:
             await send_error(str(e), writer)
@@ -354,7 +359,7 @@ class RedisServer:
         key = parts[1]
         try:
             values = deque(parts[i] for i in range(2, len(parts)))
-            length_lst = await self.db.lpush(key, values)
+            length_lst = self.db.lpush(key, values)
             await send_response(encode_integer(length_lst), writer)
         except ValueError:
             await send_error(WRONG_VALUE_MESSAGE, writer)
@@ -364,7 +369,7 @@ class RedisServer:
 
         key = parts[1]
         try:
-            length_lst = await self.db.llen(key)
+            length_lst = self.db.llen(key)
             await send_response(encode_integer(length_lst), writer)
         except ValueError:
             await send_error(WRONG_VALUE_MESSAGE, writer)
@@ -374,7 +379,7 @@ class RedisServer:
 
         key = parts[1]
         try:
-            removed_el = await self.db.lpop(key)
+            removed_el = self.db.lpop(key)
         except ValueError: 
             await send_error(WRONG_VALUE_MESSAGE, writer)
             return
