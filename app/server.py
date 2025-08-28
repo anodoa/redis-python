@@ -171,7 +171,7 @@ class InMemoryDB(AbstractDatabase):
                 raise ValueError(WRONG_VALUE_MESSAGE)
 
             new_deque = current[0] if current else deque()
-            new_deque.extendleft(reversed(values))
+            new_deque.extendleft(values)
             expiry = current[1] if current else None
             await self.set_(key, new_deque, expire=max(expiry - time.monotonic(), 0) if expiry else None)
             return len(new_deque)
