@@ -144,7 +144,7 @@ class InMemoryDB(AbstractDatabase):
             current = await self.get_(key)
             if current and not isinstance(current[0], deque):
                 raise ValueError(WRONG_VALUE_MESSAGE)
-            new_deque = current[0] if current else deque([])
+            new_deque = current[0] if current else deque()
             new_deque.extend(values)
             expiry = current[1] if current else None
             await self.set_(key, new_deque, expire=max(expiry - time.monotonic(), 0) if expiry else None)
