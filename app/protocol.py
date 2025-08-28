@@ -10,6 +10,8 @@ Functions:
 
 
 import asyncio
+from collections import deque
+from typing import Deque
 
 
 def encode_bulk_string(data: bytes) -> bytes:
@@ -23,8 +25,8 @@ def encode_integer(data: bytes) -> bytes:
 
     return f":{data}\r\n".encode()
 
-def encode_array(data: list[bytes]) -> bytes:
-    """Encoding list of bytes in RESP2-array"""
+def encode_array(data: Deque[bytes]) -> bytes:
+    """Encoding deque of bytes in RESP2-array"""
 
     result = [f"*{len(data)}\r\n".encode()]
     for element in data:

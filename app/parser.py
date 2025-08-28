@@ -13,7 +13,8 @@ Used in main cycle of clients processing for transformation incoming data into l
 """ 
 
 
-from typing import Optional
+from collections import deque
+from typing import Deque, Optional
 import asyncio
 
 
@@ -38,7 +39,7 @@ async def read_bulk_string(reader: asyncio.StreamReader) -> bytes | None:
     return None
 
 
-async def parser(reader: asyncio.StreamReader) -> Optional[list[bytes]]:
+async def parser(reader: asyncio.StreamReader) -> Optional[Deque[bytes]]:
     """Function that parsing clients requests"""
 
     try:
@@ -59,4 +60,4 @@ async def parser(reader: asyncio.StreamReader) -> Optional[list[bytes]]:
         else:
             parts.append(data)
     
-    return parts
+    return deque(parts)
