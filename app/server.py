@@ -17,7 +17,7 @@ depending on the received command:
 - method handle_lrange - returns values of the array based on the key or an emtpy array if there is no key.
 - method handle_lpush - saves key and deque of values into database like rpush, but in reversed order.
 - method handle_llen - used to query a deque's length. It returns a RESP-encoded integer.
-- method handle_lpop - 
+- method handle_lpop -
 
 Constants:
 - PONG, OK, NBS — typical server responses.
@@ -61,7 +61,7 @@ CMD_LPOP = b"LPOP"
 
 class AbstractDatabase(ABC):
     @abstractmethod
-    def set_(
+    async def set_(
         self,
         key: bytes,
         value: Union[bytes, Deque[bytes]],
@@ -72,24 +72,24 @@ class AbstractDatabase(ABC):
     def delete(self, key: bytes): ...
 
     @abstractmethod
-    def get_(
+    async def get_(
         self, key: bytes
     ) -> Optional[Tuple[Union[bytes, Deque[bytes]], Optional[float]]]: ...
 
     @abstractmethod
-    def rpush(self, key: bytes, values: Deque[bytes]) -> int: ...
+    async def rpush(self, key: bytes, values: Deque[bytes]) -> int: ...
 
     @abstractmethod
-    def lrange(self, key: bytes, start: int, end: int) -> List[bytes]: ...
+    async def lrange(self, key: bytes, start: int, end: int) -> List[bytes]: ...
 
     @abstractmethod
-    def lpush(self, key: bytes, values: Deque[bytes]) -> int: ...
+    async def lpush(self, key: bytes, values: Deque[bytes]) -> int: ...
 
     @abstractmethod
-    def llen(self, key: bytes) -> int: ...
+    async def llen(self, key: bytes) -> int: ...
 
     @abstractmethod
-    def lpop(self, key: bytes) -> Optional[bytes]: ...
+    async def lpop(self, key: bytes, count: Optional[int]) -> Optional[Union[bytes, List[bytes]]]: ...
 
 
 class InMemoryDB(AbstractDatabase):
@@ -140,7 +140,11 @@ class InMemoryDB(AbstractDatabase):
             new_deque = current[0] if current else deque()
             new_deque.extend(values)
             expiry = current[1] if current else None
-            await self.set_(key, new_deque, expire=max(expiry - time.monotonic(), 0) if expiry else None)
+            await self.set_(
+                key,
+                new_deque,
+                expire=max(expiry - time.monotonic(), 0) if expiry else None,
+            )
             return len(new_deque)
 
     async def lrange(self, key: bytes, start: int, end: int) -> List[bytes]:
@@ -173,10 +177,14 @@ class InMemoryDB(AbstractDatabase):
             new_deque = current[0] if current else deque()
             new_deque.extendleft(values)
             expiry = current[1] if current else None
-            await self.set_(key, new_deque, expire=max(expiry - time.monotonic(), 0) if expiry else None)
+            await self.set_(
+                key,
+                new_deque,
+                expire=max(expiry - time.monotonic(), 0) if expiry else None,
+            )
             return len(new_deque)
 
-    async def llen(self, key:bytes) -> int:
+    async def llen(self, key: bytes) -> int:
         lock = await self._get_lock(key)
         async with lock:
             current = await self.get_(key)
@@ -186,7 +194,7 @@ class InMemoryDB(AbstractDatabase):
                 raise ValueError(WRONG_VALUE_MESSAGE)
             return len(current[0])
 
-    async def lpop(self, key: bytes) -> Optional[bytes]:
+    async def lpop(self, key: bytes, count: Optional[int]) -> Optional[Union[bytes, List[bytes]]]:
         lock = await self._get_lock(key)
         async with lock:
             current = await self.get_(key)
@@ -198,12 +206,33 @@ class InMemoryDB(AbstractDatabase):
             if not value:
                 return None
 
-            removed_el = value.popleft()
-            if value:
-                await self.set_(key, value, expire=max(expiry - time.monotonic(), 0) if expiry else None)
-            else:
-                self.delete(key)
-            return removed_el
+            if count is None:
+                removed_el = value.popleft()
+                if value:
+                    await self.set_(
+                        key,
+                        value,
+                        expire=max(expiry - time.monotonic(), 0) if expiry else None,
+                    )
+                else:
+                    self.delete(key)
+                return removed_el
+            elif count > 0:
+                els_count = min(count, len(value))
+                removed_els = []
+                for els in range(els_count):
+                    el = value.popleft()
+                    removed_els.append(el)
+                if value:
+                    await self.set_(
+                        key,
+                        value,
+                        expire=max(expiry - time.monotonic(), 0) if expiry else None,
+                    )
+                else:
+                    self.delete(key)
+                return removed_els
+
 
 class RedisServer:
 
@@ -358,7 +387,9 @@ class RedisServer:
         except ValueError:
             await send_error(WRONG_VALUE_MESSAGE, writer)
 
-    async def handle_llen(self, parts: Deque[bytes], writer: asyncio.StreamWriter) -> None:
+    async def handle_llen(
+        self, parts: Deque[bytes], writer: asyncio.StreamWriter
+    ) -> None:
         """Handles llen command"""
 
         key = parts[1]
@@ -368,17 +399,32 @@ class RedisServer:
         except ValueError:
             await send_error(WRONG_VALUE_MESSAGE, writer)
 
-    async def handle_lpop(self, parts: Deque[bytes], writer: asyncio.StreamWriter) -> None:
+    async def handle_lpop(
+        self, parts: Deque[bytes], writer: asyncio.StreamWriter
+    ) -> None:
         """Handles lpop command"""
-
+        
         key = parts[1]
-        try:
-            removed_el = await self.db.lpop(key)
-        except ValueError: 
-            await send_error(WRONG_VALUE_MESSAGE, writer)
-            return
+        if len(parts) == 2:
+            try:
+                removed_el = await self.db.lpop(key)
+            except ValueError:
+                await send_error(WRONG_VALUE_MESSAGE, writer)
+                return
 
-        if removed_el is None:
-            await send_response(NBS, writer)
-        else:
-            await send_response(encode_bulk_string(removed_el), writer)
+            if removed_el is None:
+                await send_response(NBS, writer)
+            else:
+                await send_response(encode_bulk_string(removed_el), writer)
+        elif len(parts) == 3:
+            try:
+                count = int(parts[2])
+                removed_els = await self.db.lpop(key, count)
+            except ValueError:
+                await send_error(WRONG_VALUE_MESSAGE, writer)
+                return
+
+            if not removed_els:
+                await send_response(encode_array([]), writer)
+            else:
+                await send_response(encode_array(removed_els), writer)
