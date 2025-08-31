@@ -407,7 +407,7 @@ class RedisServer:
         key = parts[1]
         if len(parts) == 2:
             try:
-                removed_el = await self.db.lpop(key)
+                removed_el = await self.db.lpop(key, count=None)
             except ValueError:
                 await send_error(WRONG_VALUE_MESSAGE, writer)
                 return
@@ -418,8 +418,7 @@ class RedisServer:
                 await send_response(encode_bulk_string(removed_el), writer)
         elif len(parts) == 3:
             try:
-                count = int(parts[2])
-                removed_els = await self.db.lpop(key, count)
+                removed_els = await self.db.lpop(key, count=int(parts[2]))
             except ValueError:
                 await send_error(WRONG_VALUE_MESSAGE, writer)
                 return
