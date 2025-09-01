@@ -17,10 +17,11 @@ depending on the received command:
 - method handle_lrange - returns values of the array based on the key or an emtpy array if there is no key.
 - method handle_lpush - saves key and deque of values into database like rpush, but in reversed order.
 - method handle_llen - used to query a deque's length. It returns a RESP-encoded integer.
-- method handle_lpop -
+- method handle_lpop - removes and returns the first element of the list. Command accepts an optional argument to specify how many elements are to be removed.
+- method handle_blpop - BLPOP is a blocking variant of the LPOP command. It allows clients to wait for an element to become available on one or more lists.
 
 Constants:
-- PONG, OK, NBS — typical server responses.
+- PONG, OK, NBS, NULL_ARRAY — typical server responses.
 - *_MESSAGE — messages about errors.
 
 Server works in RAM: all keys and values stored in RAM and cleared when the programm ends.
@@ -29,7 +30,7 @@ Server works in RAM: all keys and values stored in RAM and cleared when the prog
 import asyncio
 import time
 from typing import Tuple, Union, List, Optional, Dict, Deque
-from collections import deque
+from collections import defaultdict, deque
 from itertools import islice
 from abc import ABC, abstractmethod
 from app.protocol import (
@@ -45,6 +46,7 @@ from app.parser import parser
 PONG = b"+PONG\r\n"
 OK = b"+OK\r\n"
 NBS = b"$-1\r\n"  # Null bulk string
+NULL_ARRAY = b"*-1\r\n"
 UNKNOWN_COMMAND_MESSAGE = "Unknown command"
 WRONG_VALUE_MESSAGE = "Operation against a key holding the wrong kind of value"
 CMD_PING = b"PING"
@@ -57,6 +59,7 @@ CMD_LRANGE = b"LRANGE"
 CMD_LPUSH = b"LPUSH"
 CMD_LLEN = b"LLEN"
 CMD_LPOP = b"LPOP"
+CMD_BLPOP = b"BLPOP"
 
 
 class AbstractDatabase(ABC):
@@ -89,12 +92,18 @@ class AbstractDatabase(ABC):
     async def llen(self, key: bytes) -> int: ...
 
     @abstractmethod
-    async def lpop(self, key: bytes, count: Optional[int]) -> Optional[Union[bytes, List[bytes]]]: ...
+    async def lpop(
+        self, key: bytes, count: Optional[int]
+    ) -> Optional[Union[bytes, List[bytes]]]: ...
+
+    @abstractmethod
+    async def blpop(self, key: bytes, timeout: int) -> Optional[List[bytes]]: ...
 
 
 class InMemoryDB(AbstractDatabase):
     def __init__(self):
         self.db: Dict[bytes, Tuple[Union[bytes, Deque[bytes]], Optional[float]]] = {}
+        self.blocked: Dict[bytes, Deque[asyncio.Future]] = defaultdict(deque)
         self.locks: Dict[bytes, asyncio.Lock] = {}
         self.global_lock = asyncio.Lock()
 
@@ -145,6 +154,23 @@ class InMemoryDB(AbstractDatabase):
                 new_deque,
                 expire=max(expiry - time.monotonic(), 0) if expiry else None,
             )
+
+            while self.blocked.get(key) and new_deque:
+                future = self.blocked[key].popleft()
+                value = new_deque.popleft()
+                future.set_result([key, value])
+
+            if new_deque:
+                await self.set_(
+                    key,
+                    new_deque,
+                    expire=max(expiry - time.monotonic(), 0) if expiry else None,
+                )
+            else:
+                self.delete(key)
+
+            self.blocked.pop(key, None)
+
             return len(new_deque)
 
     async def lrange(self, key: bytes, start: int, end: int) -> List[bytes]:
@@ -182,6 +208,23 @@ class InMemoryDB(AbstractDatabase):
                 new_deque,
                 expire=max(expiry - time.monotonic(), 0) if expiry else None,
             )
+
+            while self.blocked.get(key) and new_deque:
+                future = self.blocked[key].popleft()
+                value = new_deque.popleft()
+                future.set_result([key, value])
+
+            if new_deque:
+                await self.set_(
+                    key,
+                    new_deque,
+                    expire=max(expiry - time.monotonic(), 0) if expiry else None,
+                )
+            else:
+                self.delete(key)
+
+            self.blocked.pop(key, None)
+
             return len(new_deque)
 
     async def llen(self, key: bytes) -> int:
@@ -194,7 +237,9 @@ class InMemoryDB(AbstractDatabase):
                 raise ValueError(WRONG_VALUE_MESSAGE)
             return len(current[0])
 
-    async def lpop(self, key: bytes, count: Optional[int]) -> Optional[Union[bytes, List[bytes]]]:
+    async def lpop(
+        self, key: bytes, count: Optional[int]
+    ) -> Optional[Union[bytes, List[bytes]]]:
         lock = await self._get_lock(key)
         async with lock:
             current = await self.get_(key)
@@ -233,6 +278,33 @@ class InMemoryDB(AbstractDatabase):
                     self.delete(key)
                 return removed_els
 
+    async def blpop(self, key: bytes, timeout: int) -> Optional[List[bytes]]:
+        lock = await self._get_lock(key)
+        async with lock:
+            current = await self.get_(key)
+            if not current:
+                return None
+            value, expiry = current
+            if not isinstance(value, deque):
+                raise ValueError(WRONG_VALUE_MESSAGE)
+
+            if not value:
+                loop = asyncio.get_running_loop()
+                future = loop.create_future()
+                self.blocked[key] = future
+                result = await future
+            else:
+                removed_el = value.popleft()
+                if value:
+                    await self.set_(
+                        key,
+                        value,
+                        expire=max(expiry - time.monotonic(), 0) if expiry else None,
+                    )
+                else:
+                    self.delete(key)
+                return [key, removed_el]
+
 
 class RedisServer:
 
@@ -250,6 +322,7 @@ class RedisServer:
             CMD_LPUSH: self.handle_lpush,
             CMD_LLEN: self.handle_llen,
             CMD_LPOP: self.handle_lpop,
+            CMD_BLPOP: self.handle_blpop,
         }
 
     def __repr__(self):
@@ -403,7 +476,7 @@ class RedisServer:
         self, parts: Deque[bytes], writer: asyncio.StreamWriter
     ) -> None:
         """Handles lpop command"""
-        
+
         key = parts[1]
         if len(parts) == 2:
             try:
@@ -427,3 +500,20 @@ class RedisServer:
                 await send_response(encode_array([]), writer)
             else:
                 await send_response(encode_array(removed_els), writer)
+
+    async def handle_blpop(
+        self, parts: Deque[bytes], writer: asyncio.StreamWriter
+    ) -> None:
+        """Handles blpop command"""
+
+        key = parts[1]
+        try:
+            blpop_lst = await self.db.blpop(key)
+        except ValueError:
+            await send_error(WRONG_VALUE_MESSAGE, writer)
+            return
+
+        if not blpop_lst:
+            await send_response(NULL_ARRAY, writer)
+        else:
+            await send_response(encode_array(blpop_lst), writer)
